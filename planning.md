@@ -178,6 +178,55 @@ I may use an LLM to pre-label some examples, but I will manually review every la
 
 After evaluating the fine-tuned model, I will use an AI tool to help identify patterns in the wrong predictions. I will provide the misclassified examples and ask the tool to look for common patterns such as sarcasm, short posts, vague wording, or confusion between specific label pairs. I will verify those patterns myself before including them in the final evaluation report.
 
+## Label Stress-Test Notes
+
+Before collecting the full dataset, I stress-tested the label taxonomy by checking examples that sit near the boundary between two labels. This helped me confirm that the labels are specific enough to apply consistently.
+
+### Boundary Test 1: `analysis` vs. `hot_take`
+
+**Example:**  
+“Booker is a better scorer than Tatum because he has a deeper midrange package and does not rely as much on step-back threes.”
+
+**Possible labels:** `analysis`, `hot_take`  
+**Final label:** `analysis`  
+**Reason:** The post makes a comparison and gives specific basketball reasoning. It does not include statistics, but it still explains the claim using identifiable parts of each player’s scoring style.
+
+### Boundary Test 2: `hot_take` vs. `reaction`
+
+**Example:**  
+“This team is cooked. They are not serious contenders.”
+
+**Possible labels:** `hot_take`, `reaction`  
+**Final label:** `hot_take`  
+**Reason:** The comment is emotional, but it makes a broad judgment about the team’s overall contender status. Since the main purpose is a confident claim rather than an immediate emotional response, I would label it `hot_take`.
+
+### Boundary Test 3: `question` vs. `analysis`
+
+**Example:**  
+“Why does nobody talk about how much better the Celtics offense looks when Porzingis pulls rim protectors away from the paint?”
+
+**Possible labels:** `question`, `analysis`  
+**Final label:** `analysis`  
+**Reason:** Although the post is phrased as a question, it is really making an argument about spacing and offensive structure. The question format is rhetorical, so the label should be based on the argument being made.
+
+### Boundary Test 4: `reaction` vs. `question`
+
+**Example:**  
+“How did we lose that game after being up 18?”
+
+**Possible labels:** `reaction`, `question`  
+**Final label:** `reaction`  
+**Reason:** Even though the sentence is written as a question, the main purpose is emotional frustration after a loss. It is not asking for a real explanation, so I would label it `reaction`.
+
+### Boundary Test 5: `analysis` vs. `reaction`
+
+**Example:**  
+“That was a terrible final possession. They waited too long to start the action and ended up forcing a contested jumper.”
+
+**Possible labels:** `analysis`, `reaction`  
+**Final label:** `analysis`  
+**Reason:** The post reacts to a specific play, but it explains why the possession failed. Because it includes basketball reasoning, I would label it `analysis`.
+
 ## Clean Project Practices
 
 To avoid the problems from my previous project, I will keep this project clean and readable.
