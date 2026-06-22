@@ -1,254 +1,285 @@
-# TakeMeter: NBA Discourse Quality Classifier
+# TakeMeter: NBA Discussion Quality Classifier
 
-## Project Overview
+TakeMeter is a text classification project that evaluates the style and quality of NBA online discussion comments. The goal is to classify each comment into one of four mutually exclusive discourse categories: `analysis`, `hot_take`, `reaction`, and `question`.
 
-TakeMeter is a text classification project that evaluates the quality and style of online community discourse. For this project, I built a classifier for NBA discussion comments using four labels: `analysis`, `hot_take`, `reaction`, and `question`.
+This project compares two approaches:
 
-The goal is not just to train a model, but to understand how well a machine learning classifier can learn messy human discourse categories. This project includes a custom label taxonomy, an annotated dataset, a fine-tuned transformer model, a zero-shot LLM baseline comparison, and an evaluation of where the model succeeds and fails.
+1. A zero-shot Groq baseline using `llama-3.3-70b-versatile`
+2. A fine-tuned DistilBERT classifier trained on a 200-example NBA discussion dataset
 
 ## Community Choice
 
-I chose NBA online discussion comments because basketball communities contain many different types of discourse. Fans post statistical arguments, emotional reactions, bold unsupported claims, and genuine questions about teams, players, trades, and games.
+I chose NBA online discussion communities because basketball conversations contain several clear types of discourse. Some comments make thoughtful arguments about players, coaching, defense, trades, or team strategy. Others are emotional reactions to games and highlights. Some comments make bold claims without much evidence, while others ask genuine questions.
 
-This community is a strong fit for TakeMeter because the distinction between a thoughtful argument and a low-support take matters to people who participate in sports discussions.
+This made NBA discussion a good community for studying whether a model can distinguish between the purpose of a comment, not just its topic.
 
 ## Label Taxonomy
 
-I used four mutually exclusive labels.
+The classifier uses four labels.
 
 ### `analysis`
 
 A comment is labeled `analysis` when it makes a structured basketball argument using evidence, reasoning, statistics, comparisons, tactical observations, or specific examples.
 
-**Examples:**
+Example:
 
-* “The Nuggets are harder to guard when Jokic catches the ball at the elbow because it forces the defense to choose between helping on cutters or staying home on shooters.”
-* “Shai’s scoring jump makes sense because his free throw rate has increased and he is getting to his spots more consistently in the midrange.”
+> The Nuggets are harder to guard when Jokic catches the ball at the elbow because it forces the defense to choose between helping on cutters or staying home on shooters.
 
 ### `hot_take`
 
 A comment is labeled `hot_take` when it makes a strong or confident basketball claim with little, weak, or no supporting evidence.
 
-**Examples:**
+Example:
 
-* “Tatum is never winning a championship as the best player. He just does not have it.”
-* “This rookie is already better than half the All-Stars in the league.”
+> This team is cooked and has no chance in the playoffs.
 
 ### `reaction`
 
 A comment is labeled `reaction` when it mainly expresses an immediate emotional response to a game, player, trade, injury, highlight, or news event without trying to build an argument.
 
-**Examples:**
+Example:
 
-* “That dunk was insane. I still cannot believe he finished that.”
-* “I am sick. We really blew a 20-point lead again.”
+> That dunk was insane. I still cannot believe he finished that.
 
 ### `question`
 
-A comment is labeled `question` when its main purpose is to ask for clarification, explanation, prediction, or other people’s opinions.
+A comment is labeled `question` when its main purpose is to ask for clarification, explanation, prediction, or other people's opinions.
 
-**Examples:**
+Example:
 
-* “Why do teams keep switching smaller guards onto Jokic instead of sending an early double?”
-* “Who do you think has the better long-term ceiling, Anthony Edwards or Shai?”
+> Why do teams keep switching smaller guards onto Jokic instead of sending an early double?
 
-## Dataset
+## Data Source and Labeling Process
 
-The dataset is stored in:
+My original plan was to collect NBA discussion comments directly from Reddit communities, but direct Reddit collection returned HTTP 403 errors. To avoid fabricating data, I switched to a public Kaggle Reddit comments dataset and filtered it for NBA-related comments.
 
-`data/takemeter_dataset.csv`
+The final dataset contains 200 examples. I used `scripts/build_dataset_from_kaggle.py` to filter comments and build a balanced dataset with 50 examples per label. Because of time and API access limitations, I used rule-based prelabeling signals to speed up annotation. I then reviewed the label definitions and spot-checked examples for consistency, but the dataset likely still contains some label noise. This became an important limitation in the final results.
 
-The CSV contains three columns:
+The final dataset is saved at:
 
-| Column  | Description                                               |
-| ------- | --------------------------------------------------------- |
-| `text`  | The NBA discussion comment                                |
-| `label` | One of `analysis`, `hot_take`, `reaction`, or `question`  |
-| `notes` | Optional annotation notes, especially for difficult cases |
+```text
+data/takemeter_dataset.csv
+```
 
-### Data Collection Source
+The dataset has three columns:
 
-I collected public NBA discussion comments from public online basketball discussion spaces.
+```text
+text,label,notes
+```
 
-### Labeling Process
+## Label Distribution
 
-Each example was labeled manually using the definitions in `planning.md`. For ambiguous examples, I used the decision rules from the planning document to choose exactly one label.
+| Label     |   Count |
+| --------- | ------: |
+| analysis  |      50 |
+| hot_take  |      50 |
+| reaction  |      50 |
+| question  |      50 |
+| **Total** | **200** |
 
-### Label Distribution
+The dataset was intentionally balanced so that no label dominated the training process.
 
-| Label      | Count |
+## Train / Validation / Test Split
+
+The notebook split the dataset into training, validation, and test sets.
+
+| Split      | Count |
 | ---------- | ----: |
-| `analysis` |  TODO |
-| `hot_take` |  TODO |
-| `reaction` |  TODO |
-| `question` |  TODO |
-| **Total**  |  TODO |
+| Train      |   140 |
+| Validation |    30 |
+| Test       |    30 |
 
-### Difficult-to-Label Examples
+The test set contained:
 
-| Example | Possible Labels | Final Label | Reason |
-| ------- | --------------- | ----------- | ------ |
-| TODO    | TODO            | TODO        | TODO   |
-| TODO    | TODO            | TODO        | TODO   |
-| TODO    | TODO            | TODO        | TODO   |
+| Label    | Test Count |
+| -------- | ---------: |
+| analysis |          8 |
+| hot_take |          7 |
+| reaction |          8 |
+| question |          7 |
 
-## Model and Fine-Tuning Approach
+## Fine-Tuning Approach
 
-The fine-tuned model used for this project is:
+I fine-tuned `distilbert-base-uncased` using the 200-example TakeMeter dataset.
 
-`distilbert-base-uncased`
+The label map was:
 
-I used the starter Colab notebook to split the dataset into train, validation, and test sets, tokenize the text, fine-tune the model, and evaluate performance.
+```python
+LABEL_MAP = {
+    "analysis": 0,
+    "hot_take": 1,
+    "reaction": 2,
+    "question": 3,
+}
+```
 
-Initial training setup:
+The dataset was tokenized using the DistilBERT tokenizer. The model was trained for 3 epochs and evaluated on the held-out test set.
 
-| Setting       | Value                               |
-| ------------- | ----------------------------------- |
-| Base model    | `distilbert-base-uncased`           |
-| Epochs        | 3                                   |
-| Learning rate | 2e-5                                |
-| Batch size    | 16                                  |
-| Split         | 70% train, 15% validation, 15% test |
+Training results showed weak validation performance:
 
-I used these settings because they are reasonable defaults for fine-tuning a small transformer model on a relatively small labeled dataset.
+| Epoch | Validation Loss | Validation Accuracy |
+| ----: | --------------: | ------------------: |
+|     1 |           1.392 |               0.367 |
+|     2 |           1.384 |               0.367 |
+|     3 |           1.369 |               0.333 |
 
-## Baseline Comparison
+## Zero-Shot Baseline
 
-I compared the fine-tuned model against a zero-shot Groq baseline using:
+For the baseline, I used Groq with `llama-3.3-70b-versatile`. The model received the label definitions and examples in the system prompt, then classified each test comment into exactly one of the four labels.
 
-`llama-3.3-70b-versatile`
+The baseline prompt instructed the model to return only one valid label:
 
-The baseline prompt included the four label definitions and instructed the model to output only one label name.
+```text
+analysis
+hot_take
+reaction
+question
+```
 
-### Baseline Prompt
+The Groq baseline evaluated all 30 test examples successfully.
 
-TODO: Paste final baseline prompt here.
+## Results Comparison
 
-## Evaluation Results
+| Model                                              | Accuracy |
+| -------------------------------------------------- | -------: |
+| Zero-shot baseline: Groq `llama-3.3-70b-versatile` |    0.400 |
+| Fine-tuned DistilBERT                              |    0.267 |
 
-Both models were evaluated on the same test set.
+The fine-tuned model performed 0.133 accuracy points worse than the Groq baseline. This means fine-tuning caused a regression rather than an improvement.
 
-### Overall Accuracy
+## Baseline Metrics
 
-| Model                       | Accuracy |
-| --------------------------- | -------: |
-| Zero-shot Groq baseline     |     TODO |
-| Fine-tuned DistilBERT model |     TODO |
+| Label            | Precision | Recall | F1-score | Support |
+| ---------------- | --------: | -----: | -------: | ------: |
+| analysis         |      0.00 |   0.00 |     0.00 |       8 |
+| hot_take         |      0.50 |   0.43 |     0.46 |       7 |
+| reaction         |      0.32 |   0.75 |     0.44 |       8 |
+| question         |      1.00 |   0.43 |     0.60 |       7 |
+| **accuracy**     |           |        | **0.40** |      30 |
+| **macro avg**    |      0.45 |   0.40 |     0.38 |      30 |
+| **weighted avg** |      0.43 |   0.40 |     0.37 |      30 |
 
-### Per-Class Metrics
+## Fine-Tuned Model Metrics
 
-#### Zero-Shot Groq Baseline
+| Label            | Precision | Recall | F1-score | Support |
+| ---------------- | --------: | -----: | -------: | ------: |
+| analysis         |      0.14 |   0.12 |     0.13 |       8 |
+| hot_take         |      0.29 |   0.29 |     0.29 |       7 |
+| reaction         |      0.31 |   0.62 |     0.42 |       8 |
+| question         |      0.00 |   0.00 |     0.00 |       7 |
+| **accuracy**     |           |        | **0.27** |      30 |
+| **macro avg**    |      0.19 |   0.26 |     0.21 |      30 |
+| **weighted avg** |      0.19 |   0.27 |     0.21 |      30 |
 
-| Label      | Precision | Recall | F1-score |
-| ---------- | --------: | -----: | -------: |
-| `analysis` |      TODO |   TODO |     TODO |
-| `hot_take` |      TODO |   TODO |     TODO |
-| `reaction` |      TODO |   TODO |     TODO |
-| `question` |      TODO |   TODO |     TODO |
+## Fine-Tuned Confusion Matrix
 
-#### Fine-Tuned DistilBERT Model
+Rows are true labels and columns are predicted labels.
 
-| Label      | Precision | Recall | F1-score |
-| ---------- | --------: | -----: | -------: |
-| `analysis` |      TODO |   TODO |     TODO |
-| `hot_take` |      TODO |   TODO |     TODO |
-| `reaction` |      TODO |   TODO |     TODO |
-| `question` |      TODO |   TODO |     TODO |
+| True Label \ Predicted Label | analysis | hot_take | reaction | question |
+| ---------------------------- | -------: | -------: | -------: | -------: |
+| analysis                     |        1 |        3 |        4 |        0 |
+| hot_take                     |        1 |        2 |        4 |        0 |
+| reaction                     |        1 |        2 |        5 |        0 |
+| question                     |        4 |        0 |        3 |        0 |
 
-### Confusion Matrix
+![Fine-tuned confusion matrix](confusion_matrix.png)
 
-Rows represent true labels. Columns represent predicted labels.
+## Error Analysis
 
-| True \ Predicted | `analysis` | `hot_take` | `reaction` | `question` |
-| ---------------- | ---------: | ---------: | ---------: | ---------: |
-| `analysis`       |       TODO |       TODO |       TODO |       TODO |
-| `hot_take`       |       TODO |       TODO |       TODO |       TODO |
-| `reaction`       |       TODO |       TODO |       TODO |       TODO |
-| `question`       |       TODO |       TODO |       TODO |       TODO |
+The fine-tuned model struggled most with the `question` class. It never predicted `question` on the test set, even though the test set contained 7 true question examples. Those question examples were mostly misclassified as `analysis` or `reaction`.
 
-## Wrong Prediction Analysis
+The model also over-predicted `reaction`. Many true `analysis` and `hot_take` comments were classified as `reaction`, suggesting that the model learned surface-level emotional or conversational cues instead of deeper discourse purpose.
 
-### Wrong Prediction 1
+The main failure pattern was that the fine-tuned model did not reliably learn the difference between:
 
-**Text:** TODO
-**True label:** TODO
-**Predicted label:** TODO
-**Analysis:** TODO
+* a structured basketball argument
+* a bold unsupported claim
+* an emotional response
+* a genuine question
 
-### Wrong Prediction 2
+This was likely caused by a combination of a small dataset, noisy rule-based prelabels, and blurry boundaries between discourse categories.
 
-**Text:** TODO
-**True label:** TODO
-**Predicted label:** TODO
-**Analysis:** TODO
+## What the Model Learned vs. What I Intended
 
-### Wrong Prediction 3
+I intended the model to learn discourse quality and comment purpose. For example, I wanted it to distinguish a supported argument from an unsupported hot take.
 
-**Text:** TODO
-**True label:** TODO
-**Predicted label:** TODO
-**Analysis:** TODO
+However, the fine-tuned model appears to have learned shallow text patterns instead. It often treated different kinds of NBA comments as emotional reactions and failed to recognize questions. This suggests that the model did not fully learn the intended taxonomy.
 
-## Sample Classifications
+The Groq baseline performed better because the large language model could use the full label definitions and examples at inference time. The fine-tuned DistilBERT model only learned from the limited training examples, so noisy labels and weak class boundaries had a larger negative effect.
 
-| Text | Predicted Label | Confidence | Notes |
-| ---- | --------------- | ---------: | ----- |
-| TODO | TODO            |       TODO | TODO  |
-| TODO | TODO            |       TODO | TODO  |
-| TODO | TODO            |       TODO | TODO  |
-| TODO | TODO            |       TODO | TODO  |
-| TODO | TODO            |       TODO | TODO  |
+## Difficult Examples and Label Boundaries
 
-## Reflection: What the Model Learned vs. What I Intended
+Some NBA comments are hard to label because they contain more than one discourse function. For example, a comment can begin as a reaction and then include a short explanation. Another comment can ask a question while also implying a hot take. In these cases, I labeled the comment based on its main purpose.
 
-TODO: Explain what the model actually appeared to learn compared with the intended label definitions.
+The hardest boundary was between `analysis` and `hot_take`. A strong claim with one small reason can be difficult to classify. I treated comments as `analysis` only when they included meaningful reasoning, evidence, or specific basketball explanation. I treated comments as `hot_take` when the claim was mostly unsupported.
 
-## Spec Reflection
+The second hardest boundary was between `reaction` and `hot_take`. Emotional claims about players or teams can look like hot takes, but I labeled them as `reaction` when the main purpose was immediate emotion rather than persuasion.
 
-### One way the spec helped
+## Files in This Project
 
-TODO
+```text
+planning.md
+README.md
+labeling_guide.md
+data/takemeter_dataset.csv
+evaluation_results.json
+confusion_matrix.png
+scripts/validate_dataset.py
+scripts/dataset_progress.py
+scripts/dedupe_dataset.py
+scripts/import_raw_comments.py
+scripts/label_comments.py
+scripts/collect_reddit_comments.py
+scripts/build_dataset_from_kaggle.py
+```
 
-### One way the implementation diverged from the spec
+## How to Run Dataset Validation
 
-TODO
+From the project root:
 
-## AI Usage
+```bash
+python scripts/validate_dataset.py
+```
 
-I used AI tools to support the project, but I reviewed and made the final decisions myself.
+Expected result:
 
-### AI Use 1: Label Stress-Testing
-
-TODO: Describe how AI was used to test ambiguous label boundaries.
-
-### AI Use 2: Failure Analysis
-
-TODO: Describe how AI was used to identify patterns in wrong predictions.
-
-### Annotation Assistance Disclosure
-
-TODO: State whether AI was used to pre-label any examples. If yes, explain that every label was manually reviewed and corrected.
+```text
+Total examples: 200
+analysis: 50
+hot_take: 50
+question: 50
+reaction: 50
+OK: dataset has at least 200 examples
+OK: no label exceeds 70%
+OK: no duplicate text examples
+```
 
 ## Demo Video
 
-TODO: Add demo video link here.
-
-The demo shows:
-
-* 3–5 comments being classified by the fine-tuned model
-* One correct prediction with explanation
-* One incorrect prediction with explanation
-* A brief walkthrough of the evaluation report
-
-## Repository Contents
+Demo video link:
 
 ```text
-AI201-PROJECT3-TAKEMETER/
-  data/
-    takemeter_dataset.csv
-  planning.md
-  README.md
-  evaluation_results.json
-  confusion_matrix.png
+PASTE DEMO VIDEO LINK HERE
 ```
 
+In the demo, I show the dataset, the label taxonomy, the fine-tuning notebook, the baseline comparison, the confusion matrix, and sample predictions from the classifier.
+
+## Reflection
+
+This project showed me that fine-tuning is not automatically better than zero-shot prompting. I expected the fine-tuned DistilBERT model to beat the baseline because it trained directly on my dataset, but the opposite happened. The Groq baseline reached 0.400 accuracy, while the fine-tuned model reached only 0.267 accuracy.
+
+The most important lesson is that dataset quality matters more than just training a model. A small dataset with noisy labels can cause a fine-tuned model to learn weak patterns. In this case, the rule-based prelabeling helped me build the dataset under time pressure, but it also likely introduced label noise.
+
+If I continued this project, I would improve it by manually reviewing all 200 labels, adding more examples, creating clearer decision rules, and possibly using two annotators to check agreement. I would also improve the question class by adding more direct question examples and more examples where a question is mixed with analysis or opinion.
+
+## Spec Reflection
+
+My original plan was to collect Reddit comments directly from NBA communities. That plan changed because direct Reddit collection failed with HTTP 403 errors. Instead of inventing fake examples, I used a public Kaggle Reddit comments dataset and filtered it for NBA-related comments.
+
+The project still followed the core goal of building a discourse-quality classifier for an online community. However, the data collection process became more script-based and rule-based than originally planned. This affected the final performance and became one of the main limitations of the project.
+
+## AI Usage
+
+I used AI assistance to help plan the project, design the label taxonomy, write data validation scripts, debug collection problems, structure the README, and interpret model results. I also used scripts to help filter and prelabel examples from the dataset.
+
+I did not use AI to fabricate fake dataset examples. When direct Reddit collection failed, I switched to a public dataset source instead. I also did not commit any API keys to GitHub.
