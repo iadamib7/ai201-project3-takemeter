@@ -25,3 +25,5 @@ Thumbs.db
 models/
 checkpoints/
 outputs/
+
+kaggle_data/
